@@ -1,0 +1,237 @@
+<html>
+    <head>
+        <title>Rate</title>
+        <style>
+            body {
+                font-size:14px;
+                font-family:system-ui;
+            }
+            label {
+                display:block;
+                margin:1rem 0;
+            }
+            label span {
+                display:block;
+            }
+            input {
+                display:inline-block;
+                border:1px solid black;
+                border-radius:3px;
+                font-size:1rem;
+                padding:.5rem;
+            }
+            textarea {
+                width: 480px;
+                height: 480px;
+                display:block;
+                border:1px solid black;
+                border-radius:3px;
+            }
+            button {
+                background-color:black;
+                color:white;
+                border-radius:3px;
+                font-size:1rem;
+                padding:.5rem;
+                border:none;
+                margin:.5rem 0;
+            }
+            #user-feedback {
+                padding:1rem;
+                border:1px solid black;
+                border-radius:3px;
+                display:flex;
+                max-width:480px;
+                margin:2rem 0;
+            }
+
+            #user-feedback.hide-rating strong {
+                display:none;
+            }
+
+            #ratings button {
+                font-size:1.5rem;
+                padding:.5rem 1rem;
+                font-weight:bold;
+            }
+            #actions button {
+                background-color:transparent;
+                font-size:1rem;
+                border:1px solid black;
+                color:black;
+            }
+            .rating {
+                display:block;
+                margin: .5rem;
+                text-align:center;
+            }
+            .rating strong {
+                font-size:2rem;
+                font-weight:bold;
+                display:block;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Rate</h1>
+        <div id="connect">
+            <label for="room_id">
+                <span>Room ID to join</span>
+                <input type="text" id="room_id">
+            </label>
+            <label for="username">
+                <span>Username</span>
+                <input type="text" id="username">
+            </label>
+            <button>Enter</button>
+        </div>
+        <div id="rate" style="display:none">
+            <p id="expiration"></p>
+
+            <div id="user-feedback" class="hide-rating"></div>
+
+            <div id="ratings">
+                <header>Pick</header>
+                <button data-rating="1">1</button>
+                <button data-rating="2">2</button>
+                <button data-rating="3">3</button>
+                <button data-rating="5">5</button>
+                <button data-rating="8">8</button>
+            </div>
+
+            <div id="actions">
+                <button id="new-round">New round</button>
+                <button id="reveal">Reveal for everyone</button>
+                <button id="hide">Hide for everyone</button>
+            </div>
+        </div>
+        <script>
+            const userID = self.crypto.randomUUID();
+            const btn = document.querySelector("#connect button")
+            const roomID = document.querySelector("#room_id")
+            const username = document.querySelector("#username")
+
+            let ratings = {};
+            let activeToken = "";
+            let expiration = "";
+
+            const renderRating = () => {
+                const container = document.querySelector('#user-feedback');
+                container.innerHTML = ""
+                const ct = (user, rating) => {
+                    const tpl = document.createElement('template');
+                    tpl.innerHTML = `
+                    <div class="rating">
+                        <span>${user} picked</span>
+                        <strong>${rating}</strong>
+                    </div>
+                    `;
+                    return tpl.content.cloneNode(true);
+                }
+
+                Object.entries(ratings).forEach(([user, rating]) => {
+                    container.appendChild(ct(user, rating));
+                });
+            }
+
+            btn.addEventListener("click", () => {
+                const evtSource = new EventSource(`/connect/${roomID.value}/${userID}?captionName=${username.value}`);
+                evtSource.onmessage = e => {
+                    const d = JSON.parse(e.data);
+                    // always required to keep authentication fresh
+                    if (d.is_system && d?.body?.token !== undefined) {
+                        activeToken = d.body.token;
+                    }
+                    // convenience function to track expiration of lobby
+                    if (d.is_system && d?.body?.lobby_expires_at !== undefined) {
+                        expiration = d.body.lobby_expires_at;
+                    }
+
+                    // custom logic
+                    if (!d.is_system && d?.body?.rating !== undefined) {
+                        ratings[d.sender] = d.body.rating;
+                        renderRating();
+                    }
+
+                    if (!d.is_system && d?.body?.reveal !== undefined) {
+                        if (d.body.reveal === true) {
+                            document.querySelector('#user-feedback').classList.remove('hide-rating')
+                        } else {
+                            document.querySelector('#user-feedback').classList.add('hide-rating')
+
+                        }
+                    }
+
+                    if (!d.is_system && d?.body?.reveal !== undefined) {
+                        if (d.body.clear === true) {
+                            ratings = {};
+                            renderRating();
+                        }
+                    }
+                };
+                document.querySelector("#connect").style.display = "none"
+                document.querySelector("#rate").style.display = "block"
+            });
+
+            [...document.querySelectorAll("#ratings button")].forEach(btn => {
+                btn.addEventListener('click', e => {
+                    fetch(`/send/${roomID.value}/${userID}`, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            rating: e.target.dataset.rating,
+                        }),
+                        headers: {
+                            "Authorization": `Token ${activeToken}`
+                        }
+                    });
+                });
+            });
+
+            document.querySelector('#new-round').addEventListener('click', e => {
+                fetch(`/send/${roomID.value}/${userID}`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        reveal: false,
+                        clear: true,
+                    }),
+                    headers: {
+                        "Authorization": `Token ${activeToken}`
+                    }
+                });
+            });
+
+            document.querySelector('#reveal').addEventListener('click', e => {
+                fetch(`/send/${roomID.value}/${userID}`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        reveal: true,
+                    }),
+                    headers: {
+                        "Authorization": `Token ${activeToken}`
+                    }
+                });
+            });
+
+            document.querySelector('#hide').addEventListener('click', e => {
+                fetch(`/send/${roomID.value}/${userID}`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        reveal: false,
+                    }),
+                    headers: {
+                        "Authorization": `Token ${activeToken}`
+                    }
+                });
+            });
+
+            setInterval(() => {
+                if (expiration) {
+                    const ts = (new Date(expiration) - (new Date())) / 1000;
+                    const m = Math.floor(ts / 60);
+                    const s = Math.floor(ts - (m * 60));
+                    document.querySelector('p').innerText = `Lobby expires in ${m}m${s}s`;
+                }
+            }, 1000)
+        </script>
+    </body>
+</html>

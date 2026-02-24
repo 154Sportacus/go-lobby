@@ -1,0 +1,105 @@
+<html>
+    <head>
+        <title>Chat</title>
+        <style>
+            body {
+                font-size:14px;
+            }
+            label {
+                display:block;
+                margin:1rem 0;
+            }
+            label span {
+                display:block;
+            }
+            input {
+                display:inline-block;
+                border:1px solid black;
+                border-radius:3px;
+                font-size:1rem;
+                padding:.5rem;
+            }
+            textarea {
+                width: 480px;
+                height: 480px;
+                display:block;
+                border:1px solid black;
+                border-radius:3px;
+            }
+            textarea#msg {
+                height: 60px;
+            }
+            button {
+                background-color:black;
+                color:white;
+                border-radius:3px;
+                font-size:1rem;
+                padding:.5rem;
+                border:none;
+                margin:.5rem 0;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Chat</h1>
+        <div id="connect">
+            <label for="room_id">
+                <span>Room ID to join</span>
+                <input type="text" id="room_id">
+            </label>
+            <label for="username">
+                <span>Username</span>
+                <input type="text" id="username">
+            </label>
+            <button>Enter</button>
+        </div>
+        <div id="chat" style="display:none">
+            <textarea id="content" cols="30" rows="10" disabled="disabled"></textarea>
+
+            <label for="msg">
+                <span>Message</span>
+                <textarea id="msg" cols="30" rows="10"></textarea>
+                <button>Send</button>
+            </label>
+        </div>
+        <script>
+            const userID = self.crypto.randomUUID();
+            const btn = document.querySelector("#connect button")
+            const sendMessage = document.querySelector("#chat button")
+            const roomID = document.querySelector("#room_id")
+            const username = document.querySelector("#username")
+            const message = document.querySelector("#msg")
+            const feed = document.querySelector("#content")
+            let activeToken = "";
+
+            btn.addEventListener("click", () => {
+                const evtSource = new EventSource(`/connect/${roomID.value}/${userID}?captionName=${username.value}`);
+                evtSource.onmessage = e => {
+                    const d = JSON.parse(e.data);
+                    if (d.is_system && d?.body?.token !== undefined) {
+                        activeToken = d.body.token;
+                    }
+                    if (!d.is_system && d?.body?.message !== undefined) {
+                        feed.value += `${d?.sender}: ${d.body.message}\n`
+                    }
+                };
+                document.querySelector("#connect").style.display = "none"
+                document.querySelector("#chat").style.display = "block"
+            });
+
+            sendMessage.addEventListener("click", () => {
+                const body = message.value;
+                fetch(`/send/${roomID.value}/${userID}`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        message: body,
+                    }),
+                    headers: {
+                        "Authorization": `Token ${activeToken}`
+                    }
+                });
+                message.value = "";
+            });
+        </script>
+    </body>
+</html>
