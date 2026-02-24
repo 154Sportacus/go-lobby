@@ -1,5 +1,7 @@
 # go-lobby
 > in-memory shared data-exchange session
+ 
+[![Go Reference](https://pkg.go.dev/badge/github.com/troublete/go-lobby.svg)](https://pkg.go.dev/github.com/troublete/go-lobby)
 
 ## Introduction
 
@@ -66,7 +68,7 @@ es.onmessage = (e) => {
 It is also advisable to use as a client id an uuid or similar, same for lobbies (which is also available through a
 baseline browser functionality), just to be sure that a session is unique and only meant-to-be-in clients join.
 
-2.`POST /send/{lobbyIdx}/{clientIdx}` (requires `Authorization` header with a `Token *` value)
+2. `POST /send/{lobbyIdx}/{clientIdx}` (requires `Authorization` header with a `Token *` value)
 
 This endpoint provides the functionality to send data in a broadcasting fashion to all connected clients of a lobby. It
 requires a per-request authentication as described above. The tokens are received through the SSE-endpoint and are
