@@ -102,17 +102,17 @@ type LobbyStore struct {
 
 func (ls *LobbyStore) GetOrCreateLobby(idx string) *Lobby {
 	r, ok := ls.s.Load(idx)
+	ls.lcmu.Lock()
 	// if lobby not found && lobby maximum is not reached
 	if !ok && ls.lobbyCount < ls.c.LobbyMaxCount {
 		r = &Lobby{
 			ExpiresAt: time.Now().Add(ls.c.LobbyExpiration),
 			Status:    LobbyStatusOpen,
 		}
-		ls.lcmu.Lock()
 		ls.s.Store(idx, r)
 		ls.lobbyCount++
-		ls.lcmu.Unlock()
 	}
+	ls.lcmu.Unlock()
 
 	if r == nil {
 		return nil
@@ -175,7 +175,7 @@ func (ls *LobbyStore) ExitLobby(lobby *Lobby, clientIdx string) {
 		lobby.ccmu.Lock()
 		lobby.Clients.Delete(clientIdx)
 		lobby.clientCount--
-		if lobby.clientCount == 0 {
+		if lobby.clientCount < 1 {
 			lobby.smu.Lock()
 			lobby.Status = LobbyStatusClosed
 			lobby.smu.Unlock()
@@ -260,13 +260,6 @@ func NewLobbyMux(config ...Configuration) *LobbyMux {
 		}
 		slog.Info("lobby available")
 
-		client := s.EnterLobby(lobby, r.PathValue("clientIdx"), r.URL.Query().Get("captionName"))
-		if client == nil {
-			w.WriteHeader(http.StatusNotAcceptable)
-			return
-		}
-		slog.Info("client connected to lobby")
-
 		allowed := true
 		if c.FilterClient != nil {
 			allowed = c.FilterClient(r)
@@ -276,6 +269,13 @@ func NewLobbyMux(config ...Configuration) *LobbyMux {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+
+		client := s.EnterLobby(lobby, r.PathValue("clientIdx"), r.URL.Query().Get("captionName"))
+		if client == nil {
+			w.WriteHeader(http.StatusNotAcceptable)
+			return
+		}
+		slog.Info("client connected to lobby")
 
 		w.Header().Set("cache-control", "no-store")
 		w.Header().Set("content-type", "text/event-stream")
@@ -347,7 +347,7 @@ func NewLobbyMux(config ...Configuration) *LobbyMux {
 		}
 
 		tokens := tokenRe.FindStringSubmatch(r.Header.Get("Authorization"))
-		if client.CurrentToken != tokens[1] {
+		if len(tokens) < 2 || client.CurrentToken != tokens[1] {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
