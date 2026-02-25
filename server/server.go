@@ -77,7 +77,9 @@ func (r *Lobby) Broadcast(msg Message) {
 	r.hmu.Unlock()
 	r.Clients.Range(func(_, value any) bool {
 		c := value.(*Client)
-		c.Feed <- msg
+		go func() {
+			c.Feed <- msg
+		}()
 		return true
 	})
 }
@@ -85,9 +87,11 @@ func (r *Lobby) Broadcast(msg Message) {
 func (r *Lobby) Close() {
 	r.Clients.Range(func(_, value any) bool {
 		c := value.(*Client)
-		c.Feed <- Message{
-			IsSystem: true,
-		} // empty system message implies closing of lobby
+		go func() {
+			c.Feed <- Message{
+				IsSystem: true,
+			} // empty system message implies closing of lobby
+		}()
 		return true
 	})
 }
@@ -136,7 +140,7 @@ func (ls *LobbyStore) EnterLobby(lobby *Lobby, clientIdx, captionName string) *C
 	var c *Client
 	lobby.ccmu.Lock()
 	if lobby.clientCount < ls.c.LobbyMaxClientCount && lobby.Status == LobbyStatusOpen {
-		feed := make(chan Message, 1) // allow one buffered message, so the initial auth message can be added to the feed
+		feed := make(chan Message) // allow one buffered message, so the initial auth message can be added to the feed
 		c = &Client{
 			CaptionName: display,
 			Feed:        feed,
@@ -149,17 +153,21 @@ func (ls *LobbyStore) EnterLobby(lobby *Lobby, clientIdx, captionName string) *C
 				ExpiresAt: lobby.ExpiresAt,
 			})
 			if err == nil { // as this is a usability feature, we can just skip the message
-				c.Feed <- Message{
-					IsSystem: true,
-					Content:  em,
-				}
+				go func() {
+					c.Feed <- Message{
+						IsSystem: true,
+						Content:  em,
+					}
+				}()
 			} else {
 				slog.Error("expiration message could not be created", "err", err)
 			}
 
 			lobby.hmu.Lock()
 			for _, m := range lobby.History {
-				c.Feed <- m
+				go func() {
+					c.Feed <- m
+				}()
 			}
 			lobby.hmu.Unlock()
 		}()
@@ -218,10 +226,12 @@ func (ls *LobbyStore) ResetClientToken(client *Client) {
 		return
 	}
 
-	client.Feed <- Message{
-		IsSystem: true,
-		Content:  msg,
-	}
+	go func() {
+		client.Feed <- Message{
+			IsSystem: true,
+			Content:  msg,
+		}
+	}()
 }
 
 type LobbyMux struct {
