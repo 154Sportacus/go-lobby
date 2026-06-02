@@ -298,9 +298,12 @@ func NewLobbyMux(config ...Configuration) *LobbyMux {
 			disconnected <- true
 		}()
 
+		iddleTicker := time.NewTicker(2 * time.Minute)
+
 		for {
 			select {
 			case <-disconnected:
+				iddleTicker.Stop()
 				return
 
 			case msg := <-client.Feed:
@@ -327,6 +330,14 @@ func NewLobbyMux(config ...Configuration) *LobbyMux {
 					slog.Error("failed to write message", "err", err)
 				}
 
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+			case <-iddleTicker.C:
+				_, err := w.Write([]byte(": ping\n\n"))
+				if err != nil {
+					slog.Error("failed to write message", "err", err)
+				}
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
 				}
